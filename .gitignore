@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# autoreload para los .ipynb
+# %load_ext autoreload
+# %autoreload 2
+
 # .csv de ejemplo con muestras de los datos totales
 datos/extractos/
 
