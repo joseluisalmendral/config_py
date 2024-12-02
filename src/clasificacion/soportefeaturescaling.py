@@ -28,7 +28,7 @@ class FeatureScaling:
         if missing_cols:
             raise ValueError(f"Las siguientes columnas no están en el dataframe: {missing_cols}")
 
-    def scale_data(self, scaler):
+    def scale_data(self, scaler, path, transformer_name = "transformer"):
         """
         Escala los datos utilizando el scaler proporcionado.
 
@@ -39,9 +39,15 @@ class FeatureScaling:
         pd.DataFrame: Dataframe con los datos escalados.
         """
         datos_escalados = scaler.fit_transform(self.dataframe[self.lista_numericas])
+
+        if not path.endswith('/'):
+            path + '/'
+
         # Guardar el modelo
-        with open('transformer_scaler.pkl', 'wb') as f:
+        with open(f'{path}{transformer_name}.pkl', 'wb') as f:
             pickle.dump(scaler, f)
+
+            
         return pd.DataFrame(datos_escalados, columns=self.lista_numericas, index=self.dataframe.index)
 
     def min_max_scaler(self):
@@ -64,14 +70,14 @@ class FeatureScaling:
         
         return self.scale_data(StandardScaler())
 
-    def robust_scaler(self):
+    def robust_scaler(self, path, transformer_name = 'robust_scaler'):
         """
         Aplica el escalado robusto a las columnas numéricas.
 
         Returns:
         pd.DataFrame: Dataframe con los datos escalados robustamente.
         """
-        return self.scale_data(RobustScaler())
+        return self.scale_data(RobustScaler(), path=path, transformer_name=transformer_name)
 
     def unir_datos_escalados(self, df_datos_escalados):
         """
