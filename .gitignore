@@ -11,7 +11,7 @@ __pycache__/
 datos/extractos/
 
 # archivos explicativos irrelevantes para el repo
-priv/
+
 
 # C extensions
 *.so

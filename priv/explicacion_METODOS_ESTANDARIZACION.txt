@@ -1,0 +1,20 @@
+si no tenemos outlayers y todas las distribuciones son normales
+
+NORMALIZE
+
+
+si no tenemos outlayers (o pocos) y distribuciones anormales
+
+MIN - MAX
+
+
+si tenemos outlayers que nos interesan y son reales
+
+ROBUST
+
+
+
+si tenemos outlayers pero son "errores" y no les queremos dar
+importancia.
+
+STANDAR.
