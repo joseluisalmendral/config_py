@@ -25,7 +25,7 @@ pd.set_option('display.max_columns', None)
 #! FUNCIONES
 #!-------------
 
-def exploracion_datos(dataframe: pd.DataFrame, info=True):
+def exploracion_datos(dataframe: pd.DataFrame, nunique=True, info=False):
 
     """
     Realiza una exploración básica de los datos en el DataFrame dado e imprime varias estadísticas descriptivas.
@@ -68,6 +68,11 @@ def exploracion_datos(dataframe: pd.DataFrame, info=True):
     print("Los columnas con valores nulos y sus porcentajes son: ")
     dataframe_nulos = dataframe.isnull().sum()
     display(pd.DataFrame((dataframe_nulos[dataframe_nulos.values >0] / dataframe.shape[0]) * 100, columns=['%_nulos']).sort_values(by='%_nulos', ascending=False))
+
+    if nunique:
+        print("\n----------\n")
+        print("Valores unicos que las variables")
+        display(dataframe.nunique().reset_index())
 
     if info: 
         print("\n----------\n")
@@ -151,6 +156,41 @@ class Visualizador:
 
         plt.tight_layout()
         plt.suptitle("Distribución de variables categóricas")
+
+
+    def visualizar_categoricas_numericas(self):
+        """
+        Genera gráficos de dispersión para las variables numéricas vs todas las variables categóricas.
+
+        Params:
+            - Ninguno.
+
+        Returns:
+            - None.
+        """
+        categorical_columns = self.dataframe.select_dtypes(include=['object', 'category']).columns
+        numerical_columns = self.dataframe.select_dtypes(include=np.number).columns
+        if len(categorical_columns) > 0:
+            for num_col in numerical_columns:
+                try:
+                    _, axes = plt.subplots(nrows=len(categorical_columns), ncols=1, figsize=(10, 9 * len(categorical_columns)))
+                    axes = axes.flat
+                    plt.suptitle(f'Dispersión {num_col} vs variables categóricas', fontsize=24)
+                    for indice, cat_col in enumerate(categorical_columns):
+                        sns.scatterplot(x=num_col, y=self.dataframe.index, hue=cat_col, data=self.dataframe, ax=axes[indice])
+                        axes[indice].set_xlabel(num_col, fontsize=16)
+                        axes[indice].set_ylabel('Índice', fontsize=16)
+                        axes[indice].legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=2)
+                    plt.tight_layout()
+                except: 
+                    sns.scatterplot(x=num_col, y=self.dataframe.index, hue=categorical_columns[0], data=self.dataframe)
+                    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=10)
+                    plt.xlabel(num_col, fontsize=16)
+                    plt.ylabel('Índice', fontsize=16)
+                    plt.tight_layout()
+        else:
+            print("No hay columnas categóricas en el DataFrame.")
+
 
     def plot_relacion(self, vr, tamano_grafica=(20, 10)):
 
@@ -295,7 +335,7 @@ class Visualizador:
                     vmax=1,
                     cmap="viridis",
                     linecolor="black", 
-                    fmt='.1g', 
+                    fmt='.2g', 
                     mask = mask)
     
 
