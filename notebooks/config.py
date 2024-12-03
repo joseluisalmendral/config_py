@@ -8,6 +8,8 @@ import pickle
 # -----------------------------------------------------------------------
 import seaborn as sns
 import matplotlib.pyplot as plt
+import plotly_express as px
+from IPython.display import display, HTML
 
 # Vigilar progreso bucles
 # -----------------------------------------------------------------------

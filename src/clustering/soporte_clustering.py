@@ -358,7 +358,7 @@ class Clustering:
             axes[indice].set_xlabel('Muestras')
             axes[indice].set_ylabel('Distancias')
     
-    def modelo_aglomerativo(self, num_clusters, metodo_distancias, dataframe_original):
+    def modelo_aglomerativo(self, num_clusters, metodo_distancias, metric, dataframe_original):
         """
         Aplica clustering aglomerativo al DataFrame y añade las etiquetas de clusters al DataFrame original.
 
@@ -372,6 +372,7 @@ class Clustering:
         """
         modelo = AgglomerativeClustering(
             linkage=metodo_distancias,
+            metric=metric,
             distance_threshold=None,
             n_clusters=num_clusters
         )
