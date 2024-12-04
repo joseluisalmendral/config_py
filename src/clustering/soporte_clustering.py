@@ -29,6 +29,18 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.cluster import DBSCAN
 from sklearn.cluster import SpectralClustering
 
+# Para el modelado de los datos
+# -----------------------------------------------------------------------
+from sklearn.metrics import silhouette_score, pairwise_distances,  davies_bouldin_score
+
+
+# Sacar número de clusters y métricas
+# -----------------------------------------------------------------------
+from yellowbrick.cluster import KElbowVisualizer
+from sklearn.metrics import silhouette_score
+
+from sklearn_extra.cluster import KMedoids
+
 # Para visualizar los dendrogramas
 # -----------------------------------------------------------------------
 import scipy.cluster.hierarchy as sch
@@ -335,7 +347,7 @@ class Clustering:
         dataframe_original["clusters_kmeans"] = labels.astype(str)
         return dataframe_original, labels
     
-    def visualizar_dendrogramas(self, lista_metodos=["average", "complete", "ward"]):
+    def visualizar_dendrogramas(self, lista_metodos=["average", "complete", "ward", "single"]):
         """
         Genera y visualiza dendrogramas para el conjunto de datos utilizando diferentes métodos de distancias.
 
@@ -357,8 +369,97 @@ class Clustering:
             axes[indice].set_title(f'Dendrograma usando {metodo}')
             axes[indice].set_xlabel('Muestras')
             axes[indice].set_ylabel('Distancias')
+
+    def visualizar_radar_plot(self, clustered_df: pd.DataFrame, columna_cluster: str, variables: list):
+        
+        # Agrupar por cluster y calcular la media
+        cluster_means = clustered_df.groupby(columna_cluster)[variables].mean()
+
+        # Repetir la primera columna al final para cerrar el radar
+        cluster_means = pd.concat([cluster_means, cluster_means.iloc[:, 0:1]], axis=1)
+
+        # Crear los ángulos para el radar plot
+        num_vars = len(variables)
+        angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+        angles += angles[:1]  # Cerrar el gráfico
+
+        # Crear el radar plot
+        fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
+
+        # Dibujar un gráfico para cada cluster
+        for i, row in cluster_means.iterrows():
+            ax.plot(angles, row, label=f'Cluster {i}')
+            ax.fill(angles, row, alpha=0.25)
+
+        # Configurar etiquetas de los ejes
+        ax.set_theta_offset(np.pi / 2)
+        ax.set_theta_direction(-1)
+        ax.set_xticks(angles[:-1])
+        ax.set_xticklabels(variables)
+
+        # Añadir leyenda y título
+        plt.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
+        plt.title('Radar Plot de los Clusters', size=16)
+        plt.show()
+
+
+    def calcular_configuraciones_vinculacion_distancia(self, df_ready_to_cluster: pd.DataFrame):
+        # Lista de métricas de distancia a evaluar
+        metricas = ['euclidean', 'manhattan', 'cosine']
+        n_clusters_range = range(3, 6)  # Probar con 2, 3, 4 y 5 clusters
+
+        # Diccionario para guardar resultados
+        resultados = {'métrica': [], 'modelo': [], 'silhouette_score': [], 'clusters': []}
+
+        # Probar KMeans y KMedoids con diferentes métricas y números de clusters
+        for metrica in metricas:
+            for n_clusters in n_clusters_range:
+                # Preprocesar distancias si no es Euclidiana
+                if metrica != 'euclidean':
+                    distancias = pairwise_distances(df_ready_to_cluster, metric=metrica)
+                else:
+                    distancias = df_ready_to_cluster
+
+                # KMeans
+                kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
+                kmeans.fit(distancias)
+                labels_kmeans = kmeans.labels_
+
+                # Calcular índice de silueta para KMeans
+                try:
+                    sil_kmeans = silhouette_score(distancias, labels_kmeans, metric=metrica)
+                except ValueError:  # Manejar errores en métricas incompatibles
+                    sil_kmeans = None
+                resultados['métrica'].append(metrica)
+                resultados['modelo'].append('KMeans')
+                resultados['silhouette_score'].append(sil_kmeans)
+                resultados['clusters'].append(n_clusters)
+
+                # KMedoids
+                kmedoids = KMedoids(n_clusters=n_clusters, metric=metrica, random_state=42)
+                kmedoids.fit(df_ready_to_cluster)
+                labels_kmedoids = kmedoids.labels_
+
+                # Calcular índice de silueta para KMedoids
+                try:
+                    sil_kmedoids = silhouette_score(df_ready_to_cluster, labels_kmedoids, metric=metrica)
+                except ValueError:  # Manejar errores en métricas incompatibles
+                    sil_kmedoids = None
+                resultados['métrica'].append(metrica)
+                resultados['modelo'].append('KMedoids')
+                resultados['silhouette_score'].append(sil_kmedoids)
+                resultados['clusters'].append(n_clusters)
+
+        # Convertir resultados a DataFrame
+        resultados_df = pd.DataFrame(resultados)
+
+        # Mostrar los mejores resultados
+        resultados_df.sort_values(by='silhouette_score', ascending=False, inplace=True)
+        display(resultados_df)
+        
+
     
-    def modelo_aglomerativo(self, num_clusters, metodo_distancias, metric, dataframe_original):
+    def modelo_aglomerativo(self, num_clusters, metodo_distancias, dataframe_original):
         """
         Aplica clustering aglomerativo al DataFrame y añade las etiquetas de clusters al DataFrame original.
 
@@ -372,7 +473,6 @@ class Clustering:
         """
         modelo = AgglomerativeClustering(
             linkage=metodo_distancias,
-            metric=metric,
             distance_threshold=None,
             n_clusters=num_clusters
         )
@@ -380,6 +480,75 @@ class Clustering:
         labels = aglo_fit.labels_
         dataframe_original["clusters_agglomerative"] = labels.astype(str)
         return dataframe_original
+    
+
+    def calcular_confs_vinculacion_distancia_aglomerativo(self, df_to_cluster: pd.DataFrame):
+        # Configuraciones de vinculación y métricas de distancia
+        linkage_methods = [ 'complete',  'ward']
+        distance_metrics = ['euclidean', 'cosine', 'chebyshev']
+
+        # Crear un DataFrame para almacenar los resultados
+        results = []
+
+        # Suponiendo que tienes un DataFrame llamado df_copia
+        # Aquí df_copia debería ser tu conjunto de datos
+        # Asegúrate de que esté preprocesado adecuadamente (normalizado si es necesario)
+
+        for linkage_method in linkage_methods:
+            for metric in distance_metrics:
+                for cluster in range(3,10):
+                    try:
+                        # Configurar el modelo de AgglomerativeClustering
+                        modelo = AgglomerativeClustering(
+                            linkage=linkage_method,
+                            metric=metric,  
+                            distance_threshold=None,  # Para buscar n_clusters
+                            n_clusters=cluster, # Cambia esto según tu análisis
+                        )
+                        
+                        # Ajustar el modelo
+                        labels = modelo.fit_predict(df_to_cluster)
+
+                        # Calcular métricas si hay más de un cluster
+                        if len(np.unique(labels)) > 1:
+                            # Silhouette Score
+                            silhouette_avg = silhouette_score(df_to_cluster, labels, metric=metric)
+
+                            # Davies-Bouldin Index
+                            db_score = davies_bouldin_score(df_to_cluster, labels)
+
+                            
+                            # Cardinalidad (tamaño de cada cluster)
+                            cluster_cardinality = {cluster: sum(labels == cluster) for cluster in np.unique(labels)}
+                        else:
+                            inertia = float('inf')
+                            cluster_cardinality = {'Cluster único': len(df_to_cluster)}
+
+                        # Almacenar resultados
+                        results.append({
+                            'linkage': linkage_method,
+                            'metric': metric,
+                            'silhouette_score': silhouette_avg,
+                            'davies_bouldin_index': db_score,
+                            'cluster_cardinality': cluster_cardinality,
+                            'n_cluster': cluster
+                        })
+
+                    except Exception as e:
+                        print(f"Error con linkage={linkage_method}, metric={metric}: {e}")
+
+        # Crear DataFrame de resultados
+        results_df = pd.DataFrame(results)
+
+        # Mostrar resultados ordenados por silhouette_score
+        results_df = results_df.sort_values(by='silhouette_score', ascending=False)
+
+        # Mostrar el DataFrame
+        display(results_df.head(20))
+
+
+
+
     
     def modelo_divisivo(self, dataframe_original, threshold=0.5, max_clusters=5):
         """

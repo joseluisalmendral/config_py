@@ -20,6 +20,25 @@ from tqdm import tqdm
 from sklearn.model_selection import train_test_split,GridSearchCV
 
 
+# Para el modelado de los datos
+# -----------------------------------------------------------------------
+from sklearn.metrics import silhouette_score, pairwise_distances,  davies_bouldin_score
+
+
+# Sacar número de clusters y métricas
+# -----------------------------------------------------------------------
+from yellowbrick.cluster import KElbowVisualizer
+from sklearn.metrics import silhouette_score
+
+# Modelos de clustering
+# -----------------------------------------------------------------------
+from sklearn.cluster import KMeans
+from sklearn_extra.cluster import KMedoids
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import DBSCAN
+from sklearn.cluster import SpectralClustering
+
+
 # Gestionar los warnings
 # -----------------------------------------------------------------------
 import warnings
