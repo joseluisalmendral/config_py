@@ -11,6 +11,7 @@ import math
 # -----------------------------------------------------------------------
 import matplotlib.pyplot as plt
 import seaborn as sns
+from tqdm import tqdm
 
 # Preprocesado y modelado
 # -----------------------------------------------------------------------
@@ -21,6 +22,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, No
 # -----------------------------------------------------------------------
 from yellowbrick.cluster import KElbowVisualizer
 from sklearn.metrics import silhouette_score, davies_bouldin_score
+from sklearn.neighbors import NearestNeighbors
 
 # Modelos de clustering
 # -----------------------------------------------------------------------
@@ -626,50 +628,90 @@ class Clustering:
     
     def modelo_dbscan(self, dataframe_original, eps_values=[0.5, 1.0, 1.5], min_samples_values=[3, 2, 1]):
         """
-        Aplica DBSCAN al DataFrame y añade las etiquetas de clusters al DataFrame original.
+        Aplica DBSCAN al DataFrame y genera clusters con diferentes combinaciones de parámetros. 
+        Evalúa las métricas de calidad y retorna el DataFrame original con etiquetas de clusters.
 
-        Params:
-            - dataframe_original : pd.DataFrame. El DataFrame original al que se le añadirán las etiquetas de clusters.
-            - eps_values : list of float, optional, default: [0.5, 1.0, 1.5]. Lista de valores para el parámetro eps de DBSCAN.
-            - min_samples_values : list of int, optional, default: [3, 2, 1]. Lista de valores para el parámetro min_samples de DBSCAN.
+        Parámetros:
+        -----------
+        dataframe_original : pd.DataFrame
+            DataFrame original al que se le añadirán las etiquetas de clusters.
+        eps_values : list of float, optional, default: [0.5, 1.0, 1.5]
+            Lista de valores para el parámetro eps de DBSCAN.
+        min_samples_values : list of int, optional, default: [3, 2, 1]
+            Lista de valores para el parámetro min_samples de DBSCAN.
 
-        Returns:
-            - pd.DataFrame. El DataFrame original con una nueva columna para las etiquetas de clusters.
+        Retorna:
+        --------
+        dataframe_original : pd.DataFrame
+            DataFrame con una nueva columna `clusters_dbscan` que contiene las etiquetas de los clusters.
+        metrics_df_dbscan : pd.DataFrame
+            DataFrame con las métricas de evaluación para cada combinación de parámetros.
         """
+        # Validación de entradas
+        if not eps_values or not min_samples_values:
+            raise ValueError("Las listas eps_values y min_samples_values no pueden estar vacías.")
+
+        # Inicializar variables para almacenar el mejor modelo
         best_eps = None
         best_min_samples = None
-        best_silhouette = -1  # Usamos -1 porque la métrica de silueta varía entre -1 y 1
+        best_silhouette = float("-inf")
+        metrics_results_dbscan = []
 
-        # Iterar sobre diferentes combinaciones de eps y min_samples
-        for eps in eps_values:
+        # Iterar sobre combinaciones de parámetros
+        for eps in tqdm(eps_values, desc=f"Iterando sobre eps y min_samples"):
             for min_samples in min_samples_values:
-                # Aplicar DBSCAN
-                dbscan = DBSCAN(eps=eps, min_samples=min_samples)
-                labels = dbscan.fit_predict(self.dataframe)
+                try:
+                    # Aplicar DBSCAN
+                    dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+                    labels = dbscan.fit_predict(dataframe_original)
 
-                # Calcular la métrica de silueta, ignorando etiquetas -1 (ruido)
-                if len(set(labels)) > 1 and len(set(labels)) < len(labels):
-                    silhouette = silhouette_score(self.dataframe, labels)
-                else:
-                    silhouette = -1
+                    # Evaluar solo si hay más de un cluster
+                    if len(set(labels)) > 1 and len(set(labels)) < len(labels):
+                        silhouette = silhouette_score(dataframe_original, labels)
+                        davies_bouldin = davies_bouldin_score(dataframe_original, labels)
 
-                # Mostrar resultados (opcional)
-                print(f"eps: {eps}, min_samples: {min_samples}, silhouette: {silhouette}")
+                        # Cardinalidad de los clusters
+                        unique, counts = np.unique(labels, return_counts=True)
+                        cardinalidad = dict(zip(unique, counts))
 
-                # Actualizar el mejor resultado si la métrica de silueta es mejor
-                if silhouette > best_silhouette:
-                    best_silhouette = silhouette
-                    best_eps = eps
-                    best_min_samples = min_samples
+                        # Guardar resultados
+                        metrics_results_dbscan.append({
+                            "eps": eps,
+                            "min_samples": min_samples,
+                            "silhouette_score": silhouette,
+                            "davies_bouldin_score": davies_bouldin,
+                            "cardinality": cardinalidad
+                        })
 
-        # Aplicar DBSCAN con los mejores parámetros encontrados
-        best_dbscan = DBSCAN(eps=best_eps, min_samples=best_min_samples)
-        best_labels = best_dbscan.fit_predict(self.dataframe)
+                        # Actualizar el mejor modelo
+                        if silhouette > best_silhouette:
+                            best_silhouette = silhouette
+                            best_eps = eps
+                            best_min_samples = min_samples
+                except Exception as e:
+                    print(f"Error con eps={eps}, min_samples={min_samples}: {e}")
 
-        # Añadir los labels al DataFrame original
-        dataframe_original["clusters_dbscan"] = best_labels
+        # Crear un DataFrame con las métricas
+        metrics_df_dbscan = pd.DataFrame(metrics_results_dbscan).sort_values(by="silhouette_score", ascending=False)
 
-        return dataframe_original
+        # Mostrar resultados
+        display(metrics_df_dbscan)
+
+        # Aplicar DBSCAN con los mejores parámetros
+        if best_eps is not None and best_min_samples is not None:
+            best_dbscan = DBSCAN(eps=best_eps, min_samples=best_min_samples)
+            dataframe_original["clusters_dbscan"] = best_dbscan.fit_predict(dataframe_original)
+            print(f"Mejor modelo: eps={best_eps}, min_samples={best_min_samples}, silhouette_score={best_silhouette:.4f}")
+        else:
+            print("No se encontraron clusters válidos con los parámetros proporcionados.")
+            dataframe_original["clusters_dbscan"] = -1  # Asignar ruido si no se encontraron clusters
+
+        cantidad_clusters = dataframe_original["clusters_dbscan"].nunique()
+        print(f"Se han generado {cantidad_clusters} clusters (incluyendo outliers, si los hay).")
+
+        return dataframe_original, metrics_df_dbscan
+    
+    
 
     def calcular_metricas(self, labels: np.ndarray):
         """
@@ -709,4 +751,207 @@ class Clustering:
             fig.delaxes(axes[-1]) 
 
         plt.tight_layout()
-        plt.show() 
+        plt.show()
+
+    
+    def plot_completo_clusters(self, data, x, y=None, dateplot="month", hue=None):
+        """
+        Genera múltiples gráficos de las columnas seleccionadas de un DataFrame, con la opción 
+        de usar una variable como "hue" para diferenciar grupos o categorías.
+
+        Créditos:
+        -----------
+        Como base, he tomado una función del chino murciano más majo del mundo. Gracias <3 @https://github.com/yanruwu
+
+        Parámetros:
+        -----------
+        data : pd.DataFrame
+            El DataFrame que contiene los datos para graficar.
+        x : str o list
+            Columnas del DataFrame a graficar. Puede ser un string (columna única) o una lista 
+            de nombres de columnas.
+        y : str, opcional
+            Columna del DataFrame para usar como variable dependiente en los gráficos (para gráficos
+            como scatterplot, boxplot, etc.). Si no se especifica, se grafican las columnas de `x` 
+            individualmente.
+        dateplot : {"month", "year"}, opcional, default="month"
+            Especifica cómo manejar las columnas de tipo fecha. Si es "month", las fechas se 
+            agruparán por mes. Si es "year", se agruparán por año.
+        hue : str, opcional
+            Columna del DataFrame que se usará como "hue" para diferenciar colores en los gráficos. 
+            Esto es útil para comparar grupos o clusters.
+
+        Salida:
+        -------
+        Gráficos generados:
+            - Para columnas numéricas: histogramas con la opción de kde (curva de densidad).
+            - Para columnas categóricas: gráficos de conteo (countplot).
+            - Para columnas de fecha: gráficos de conteo agrupados por mes o año.
+            - Para combinaciones de columnas con `y`:
+                * Numérico vs Numérico: scatterplot.
+                * Categórico vs Numérico: boxplot.
+                * Fecha vs Numérico: lineplot.
+
+        Notas:
+        ------
+        - Si no se especifica `y`, la función genera gráficos individuales para cada columna en `x`.
+        - Si se especifica `hue`, los gráficos mostrarán los datos diferenciados por la categoría 
+        especificada en `hue`.
+
+        Ejemplo:
+        --------
+        # Graficar todas las columnas con los clusters como hue
+        plot_completo_clusters(data=df, x=df.columns, hue="clusters_dbscan")
+
+        # Graficar columnas específicas
+        plot_completo_clusters(data=df, x=["edad", "ingresos"], y="gasto", hue="segmento")
+
+        """
+
+        if type(x) == str:
+            x = [x] #convertir x en lista
+
+        # Separar tipos de datos
+        num_cols = data[x].select_dtypes("number")
+        cat_cols = data[x].select_dtypes("O", "category")
+        date_cols = data[x].select_dtypes("datetime")
+
+        if not y:
+            nrows = 2
+            ncols = math.ceil(len(x) / 2)
+            fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(25, 15), dpi=130)
+            axes = axes.flat
+            for i, col in enumerate(x):
+                if col in num_cols:
+                    sns.histplot(data=data, x=col, hue=hue, ax=axes[i], bins=20, kde=True)
+                    axes[i].set_title(col)
+                elif col in cat_cols:
+                    sns.countplot(data=data, x=col, hue=hue, ax=axes[i])
+                    axes[i].tick_params(axis='x', rotation=90)
+                    axes[i].set_title(col)
+                elif col in date_cols:
+                    sns.countplot(
+                        data=data,
+                        x=data[col].apply(lambda x: x.year) if dateplot == "year" else data[col].apply(lambda x: x.month),
+                        hue=hue,
+                        ax=axes[i]
+                    )
+                    axes[i].tick_params(axis='x', rotation=90)
+                    axes[i].set_title(f"{col}_{dateplot}")
+                else:
+                    print(f"Advertencia: No se pudo graficar '{col}' ya que no es de un tipo soportado o la combinación no es válida.")
+                
+                axes[i].set_xlabel("")
+                
+            for j in range(len(x), len(axes)):
+                fig.delaxes(axes[j])
+
+            plt.tight_layout()
+            plt.show()
+
+        else:
+            nrows = math.ceil(len(x) / 2)
+            ncols = 2
+            fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(15, 25), dpi=130)
+            axes = axes.flat
+
+            for i, col in enumerate(x):
+                # Caso 1: Numérico vs Numérico -> Scatterplot
+                if col in num_cols and y in data.select_dtypes("number"):
+                    sns.scatterplot(data=data, x=col, y=y, hue=hue, ax=axes[i])
+                    axes[i].set_title(f'{col} vs {y}')
+                # Caso 2: Categórico vs Numérico -> Boxplot o Violinplot
+                elif col in cat_cols and y in data.select_dtypes("number"):
+                    sns.boxplot(data=data, x=col, y=y, hue=hue, ax=axes[i])
+                    axes[i].tick_params(axis='x', rotation=90)
+                    axes[i].set_title(f'{col} vs {y}')
+                # Caso 3: Fecha vs Numérico -> Lineplot
+                elif col in date_cols and y in data.select_dtypes("number"):
+                    date_data = data[col].dt.year if dateplot == "year" else data[col].dt.month
+                    sns.lineplot(x=date_data, y=data[y], hue=hue, ax=axes[i])
+                    axes[i].set_title(f'{col}_{dateplot} vs {y}')
+                    axes[i].tick_params(axis='x', rotation=90)
+                else:
+                    print(f"Advertencia: No se pudo graficar '{col}' frente a '{y}' ya que no es de un tipo soportado o la combinación no es válida.")
+
+                axes[i].set_xlabel("")
+            
+            for j in range(len(x), len(axes)):
+                fig.delaxes(axes[j])
+
+            plt.tight_layout()
+            plt.show()
+
+    
+    def plot_epsilon(self, dataframe, k=10, figsize=(10, 6), ylim=(0, 0.2)):
+        """
+        Genera un gráfico de k-distancias para determinar el valor óptimo de epsilon (eps)
+        al usar el algoritmo DBSCAN, y calcula numéricamente el valor de epsilon basado 
+        en el máximo gradiente (codo).
+
+        Parámetros:
+        -----------
+        dataframe : pd.DataFrame o np.ndarray
+            Conjunto de datos a analizar. Cada fila es un punto, y las columnas son las características.
+        k : int, opcional, default=10
+            Número de vecinos a considerar. Generalmente se recomienda usar un valor igual al
+            número de variables por 2, o ligeramente mayor.
+        figsize : tuple, opcional, default=(10, 6)
+            Tamaño de la figura del gráfico (ancho, alto).
+        ylim : tuple, opcional, default=(0, 0.2)
+            Límite en el eje y para enfocar la visualización de las distancias.
+
+        Salida:
+        -------
+        Gráfico de k-distancias:
+            - El eje x representa los puntos ordenados por distancia al k-ésimo vecino más cercano.
+            - El eje y muestra la distancia al k-ésimo vecino más cercano.
+            - La línea vertical roja indica el epsilon recomendado basado en el codo.
+
+        Retorno:
+        --------
+        eps_value : float
+            Valor recomendado para epsilon (eps).
+
+        Notas:
+        ------
+        - Es importante escalar los datos antes de usar esta función, especialmente si las características 
+        tienen diferentes rangos.
+
+        Ejemplo:
+        --------
+        # Calcular y graficar distancias para encontrar eps
+        scaler = StandardScaler()
+        scaled_data = scaler.fit_transform(dataframe)
+        self.plot_epsilon(dataframe=scaled_data, k=10, figsize=(12, 8), ylim=(0, 0.5))
+        """
+        # Paso 1: Encontrar a los vecinos más cercanos
+        neighbors = NearestNeighbors(n_neighbors=k)
+        neighbors_fit = neighbors.fit(dataframe)
+        
+        # Paso 2: calcular las distancias entre vecinos
+        distances, indices = neighbors_fit.kneighbors(dataframe)
+        k_distances = distances[:, k - 1]  # k-th nearest neighbor distances
+
+        # Paso 3: Ordenar distancias
+        k_distances = np.sort(k_distances)
+        
+        # Paso 4: Calcular el máximo gradiente (codo)
+        gradients = np.diff(k_distances)  # Derivada numérica
+        max_gradient_index = np.argmax(gradients)  # Índice con el mayor gradiente
+        eps_value = k_distances[max_gradient_index]  # Valor de epsilon recomendado
+
+        # Paso 5: Graficar el k-distance plot
+        plt.figure(figsize=figsize)
+        plt.plot(k_distances, label="distancias 'k'")
+        plt.axvline(x=max_gradient_index, color='red', linestyle='--', label=f"Epsilon = {eps_value:.4f}")
+        plt.ylim(ylim)
+        plt.title(f"Plot K-Distance con k={k}")
+        plt.xlabel("Puntos ordenados por distancia")
+        plt.ylabel(f"Distancia al {k}-ésimo vecino")
+        plt.legend()
+        plt.grid()
+        plt.show()
+
+        # Retornar el valor de epsilon
+        return eps_value
